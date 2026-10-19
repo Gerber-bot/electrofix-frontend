@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --background: #020617;
+  --foreground: #e5e7eb;
+
+  /* ElectroFix Brand Tokens */
+  --brand-bg: #020617;
+  --brand-bg-elevated: #0f172a;
+  --brand-surface: #0f172a;
+  --brand-surface-hover: #1e293b;
+  --brand-border: #1e293b;
+  --brand-primary: #22d3ee;
+  --brand-primary-blue: #3b82f6;
+  --brand-secondary: #a855f7;
+  --brand-success: #10b981;
+  --brand-warning: #f59e0b;
+  --brand-orange: #fb923c;
+  --brand-danger: #ef4444;
+  --brand-text-primary: #e5e7eb;
+  --brand-text-secondary: #9ca3af;
+  --brand-text-muted: #6b7280;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), Inter, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
+
+  /* Semantic Brand Colors for Tailwind v4 */
+  --color-brand-bg: var(--brand-bg);
+  --color-brand-bg-elevated: var(--brand-bg-elevated);
+  --color-brand-surface: var(--brand-surface);
+  --color-brand-surface-hover: var(--brand-surface-hover);
+  --color-brand-border: var(--brand-border);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-blue: var(--brand-primary-blue);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-success: var(--brand-success);
+  --color-brand-warning: var(--brand-warning);
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-danger: var(--brand-danger);
+  --color-brand-text: var(--brand-text-primary);
+  --color-brand-muted: var(--brand-text-secondary);
+  --color-brand-subtle: var(--brand-text-muted);
+
+  /* Custom SaaS Shadows */
+  --shadow-brand-sm: 0 2px 8px -2px rgba(2, 6, 23, 0.7);
+  --shadow-brand-card: 0 10px 30px -10px rgba(2, 6, 23, 0.85), 0 0 1px 1px rgba(30, 41, 59, 0.6);
+  --shadow-brand-glow: 0 8px 25px -4px rgba(34, 211, 238, 0.22);
+  --shadow-brand-ai: 0 8px 25px -4px rgba(168, 85, 247, 0.22);
+}
+
+body {
+  background: var(--brand-bg);
+  color: var(--brand-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
