@@ -12,9 +12,10 @@ import type {
   UpdateCatalogItemInput,
 } from '../types/catalog';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+// Sanitize API base URL by stripping trailing slashes to prevent double-slash request errors
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/+$/, '');
 
-async function getAuthToken(): Promise<string | undefined> {
+export async function getAuthToken(): Promise<string | undefined> {
   if (typeof window === 'undefined') return undefined;
   try {
     const { createSupabaseBrowserClient } = await import('./supabase/client');
@@ -28,16 +29,43 @@ async function getAuthToken(): Promise<string | undefined> {
   }
 }
 
+async function getAuthHeaders(
+  token?: string,
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const authToken = token || (await getAuthToken());
+  const headers: Record<string, string> = { ...extra };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  return headers;
+}
+
+// ==========================================
+// TICKETS & WORKSHOP APIS
+// ==========================================
+
 export async function fetchTenant() {
   const res = await fetch(`${API_BASE}/tickets/tenant`);
   if (!res.ok) throw new Error('Error al cargar datos del taller');
   return res.json();
 }
 
-export async function fetchTickets(status?: TicketStatus): Promise<RepairTicket[]> {
+export async function fetchTickets(status?: TicketStatus, token?: string): Promise<RepairTicket[]> {
+  const headers = await getAuthHeaders(token);
   const url = status ? `${API_BASE}/tickets?status=${status}` : `${API_BASE}/tickets`;
-  const res = await fetch(url, { cache: 'no-store' });
+  const res = await fetch(url, { headers, cache: 'no-store' });
   if (!res.ok) throw new Error('Error al cargar tickets');
+  return res.json();
+}
+
+export async function fetchTicketById(id: string, token?: string): Promise<RepairTicket> {
+  const headers = await getAuthHeaders(token);
+  const res = await fetch(`${API_BASE}/tickets/${encodeURIComponent(id)}`, {
+    headers,
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error('Ticket no encontrado');
   return res.json();
 }
 
@@ -51,9 +79,7 @@ export async function createTicket(
   data: Partial<RepairTicket>,
   token?: string,
 ): Promise<RepairTicket> {
-  const authToken = token || (await getAuthToken());
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/tickets`, {
     method: 'POST',
@@ -79,11 +105,9 @@ export async function updateTicket(
   },
   token?: string,
 ): Promise<RepairTicket> {
-  const authToken = token || (await getAuthToken());
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
-  const res = await fetch(`${API_BASE}/tickets/${id}`, {
+  const res = await fetch(`${API_BASE}/tickets/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers,
     body: JSON.stringify(data),
@@ -91,6 +115,19 @@ export async function updateTicket(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: 'Error al actualizar ticket' }));
     throw new Error(err.message || 'Error al actualizar ticket');
+  }
+  return res.json();
+}
+
+export async function approveTicketBudget(idOrToken: string): Promise<RepairTicket> {
+  const clean = idOrToken.trim();
+  const res = await fetch(`${API_BASE}/tickets/${encodeURIComponent(clean)}/approve`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    // Fallback to updateTicket
+    return updateTicket(clean, { status: 'IN_REPAIR' });
   }
   return res.json();
 }
@@ -107,14 +144,16 @@ export async function fetchTicketByToken(token: string): Promise<RepairTicket> {
   return res.json();
 }
 
+// ==========================================
+// AI ASSISTANT & QUOTING APIS
+// ==========================================
+
 export async function cleanNoteWithAi(
   rawNotes: string,
   device?: string,
   token?: string,
 ): Promise<{ cleanedReport: string }> {
-  const authToken = token || (await getAuthToken());
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/ai/clean-note`, {
     method: 'POST',
@@ -135,9 +174,12 @@ export async function chatWithAi(message: string, customerDni?: string, history?
   return res.json();
 }
 
+// ==========================================
+// USERS & RBAC APIS
+// ==========================================
+
 export async function fetchUsers(token?: string): Promise<import('../types/user').UserItem[]> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/auth/users`, {
     headers,
@@ -155,8 +197,7 @@ export async function createUser(
   userData: { email: string; password: string; role: import('../types/user').UserRole },
   token?: string,
 ): Promise<import('../types/user').UserItem> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/auth/create-user`, {
     method: 'POST',
@@ -176,8 +217,7 @@ export async function updateUserRole(
   role: import('../types/user').UserRole,
   token?: string,
 ): Promise<import('../types/user').UserItem> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/auth/update-role/${encodeURIComponent(userId)}`, {
     method: 'PATCH',
@@ -196,8 +236,7 @@ export async function disableUser(
   userId: string,
   token?: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/auth/disable/${encodeURIComponent(userId)}`, {
     method: 'DELETE',
@@ -214,8 +253,7 @@ export async function deleteUser(
   userId: string,
   token?: string,
 ): Promise<{ ok: boolean; message: string }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/auth/delete/${encodeURIComponent(userId)}`, {
     method: 'DELETE',
@@ -228,7 +266,9 @@ export async function deleteUser(
   return res.json();
 }
 
-// ================= ADMIN SUITE APIS =================
+// ==========================================
+// ADMIN SUITE APIS (AUDIT, INVITATIONS, DASHBOARD)
+// ==========================================
 
 export async function fetchAuditLogs(
   filters?: {
@@ -242,8 +282,7 @@ export async function fetchAuditLogs(
   },
   token?: string,
 ): Promise<AuditLogsResponse> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const queryParams = new URLSearchParams();
   if (filters?.user_id) queryParams.set('user_id', filters.user_id);
@@ -266,8 +305,7 @@ export async function fetchAuditLogs(
 }
 
 export async function fetchAuditLogById(id: string, token?: string): Promise<AuditLogEntry> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/admin-suite/audit/${encodeURIComponent(id)}`, {
     headers,
@@ -281,8 +319,7 @@ export async function fetchAuditLogById(id: string, token?: string): Promise<Aud
 }
 
 export async function fetchInvitations(token?: string): Promise<InvitationEntry[]> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/admin-suite/invitations`, {
     headers,
@@ -299,8 +336,7 @@ export async function createInvitation(
   data: { email: string; role: string },
   token?: string,
 ): Promise<{ id: string; email: string; role: string; token: string; inviteUrl: string }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/admin-suite/invitations`, {
     method: 'POST',
@@ -343,8 +379,7 @@ export async function acceptInvitation(
 }
 
 export async function fetchDashboardMetrics(token?: string): Promise<DashboardMetricsData> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/admin-suite/dashboard/metrics`, {
     headers,
@@ -358,8 +393,7 @@ export async function fetchDashboardMetrics(token?: string): Promise<DashboardMe
 }
 
 export async function fetchDashboardCharts(token?: string): Promise<DashboardChartsData> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/admin-suite/dashboard/charts`, {
     headers,
@@ -392,33 +426,41 @@ export function getPaymentPdfUrl(paymentId: string): string {
 // BILLING API (PAYMENTS, INVOICES, CASH CLOSING, MP)
 // ==========================================
 
-export async function fetchPayments(filters?: {
-  ticketId?: string;
-  status?: string;
-  method?: string;
-}): Promise<any[]> {
+export async function fetchPayments(
+  filters?: {
+    ticketId?: string;
+    status?: string;
+    method?: string;
+  },
+  token?: string,
+): Promise<any[]> {
+  const headers = await getAuthHeaders(token);
   const query = new URLSearchParams();
   if (filters?.ticketId) query.set('ticketId', filters.ticketId);
   if (filters?.status) query.set('status', filters.status);
   if (filters?.method) query.set('method', filters.method);
 
   const qs = query.toString() ? `?${query.toString()}` : '';
-  const res = await fetch(`${API_BASE}/billing/payments${qs}`, { cache: 'no-store' });
+  const res = await fetch(`${API_BASE}/billing/payments${qs}`, { headers, cache: 'no-store' });
   if (!res.ok) throw new Error('Error al cargar pagos');
   return res.json();
 }
 
-export async function createPayment(data: {
-  ticketId?: string;
-  amount: number;
-  method: string;
-  status?: string;
-  reference?: string;
-  notes?: string;
-}): Promise<any> {
+export async function createPayment(
+  data: {
+    ticketId?: string;
+    amount: number;
+    method: string;
+    status?: string;
+    reference?: string;
+    notes?: string;
+  },
+  token?: string,
+): Promise<any> {
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
   const res = await fetch(`${API_BASE}/billing/payments`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -428,21 +470,26 @@ export async function createPayment(data: {
   return res.json();
 }
 
-export async function fetchInvoices(): Promise<any[]> {
-  const res = await fetch(`${API_BASE}/billing/invoices`, { cache: 'no-store' });
+export async function fetchInvoices(token?: string): Promise<any[]> {
+  const headers = await getAuthHeaders(token);
+  const res = await fetch(`${API_BASE}/billing/invoices`, { headers, cache: 'no-store' });
   if (!res.ok) throw new Error('Error al cargar facturas');
   return res.json();
 }
 
-export async function createInvoice(data: {
-  ticketId?: string;
-  customerName: string;
-  customerTaxId?: string;
-  totalAmount: number;
-}): Promise<any> {
+export async function createInvoice(
+  data: {
+    ticketId?: string;
+    customerName: string;
+    customerTaxId?: string;
+    totalAmount: number;
+  },
+  token?: string,
+): Promise<any> {
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
   const res = await fetch(`${API_BASE}/billing/invoices`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -452,21 +499,26 @@ export async function createInvoice(data: {
   return res.json();
 }
 
-export async function fetchBillingSummary(): Promise<any> {
-  const res = await fetch(`${API_BASE}/billing/summary`, { cache: 'no-store' });
+export async function fetchBillingSummary(token?: string): Promise<any> {
+  const headers = await getAuthHeaders(token);
+  const res = await fetch(`${API_BASE}/billing/summary`, { headers, cache: 'no-store' });
   if (!res.ok) throw new Error('Error al cargar resumen de caja');
   return res.json();
 }
 
-export async function createMercadoPagoPreference(data: {
-  ticketId?: string;
-  title: string;
-  amount: number;
-  customerEmail?: string;
-}): Promise<any> {
+export async function createMercadoPagoPreference(
+  data: {
+    ticketId?: string;
+    title: string;
+    amount: number;
+    customerEmail?: string;
+  },
+  token?: string,
+): Promise<any> {
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
   const res = await fetch(`${API_BASE}/billing/mercadopago/preference`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -491,8 +543,7 @@ export function getBackupDownloadUrl(module: string, format: 'zip' | 'json' = 'j
 }
 
 export async function fetchBackupHistory(token?: string): Promise<AuditLogEntry[]> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/backup/history`, {
     headers,
@@ -511,8 +562,7 @@ export async function downloadBackupFile(
   token?: string,
 ): Promise<void> {
   const url = getBackupDownloadUrl(module, format);
-  const headers: Record<string, string> = {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const headers = await getAuthHeaders(token);
 
   const res = await fetch(url, { headers });
   if (!res.ok) {
@@ -553,25 +603,29 @@ export async function downloadBackupFile(
 export async function fetchCatalogItems(
   activeOnly?: boolean,
   category?: string,
+  token?: string,
 ): Promise<CatalogItem[]> {
+  const headers = await getAuthHeaders(token);
   const query = new URLSearchParams();
   if (activeOnly !== undefined) query.set('active', String(activeOnly));
   if (category) query.set('category', category);
 
   const qs = query.toString() ? `?${query.toString()}` : '';
-  const res = await fetch(`${API_BASE}/catalog${qs}`, { cache: 'no-store' });
+  const res = await fetch(`${API_BASE}/catalog${qs}`, { headers, cache: 'no-store' });
   if (!res.ok) throw new Error('Error al cargar el catálogo de servicios');
   return res.json();
 }
 
-export async function fetchCatalogItemById(id: string): Promise<CatalogItem> {
-  const res = await fetch(`${API_BASE}/catalog/${encodeURIComponent(id)}`, { cache: 'no-store' });
+export async function fetchCatalogItemById(id: string, token?: string): Promise<CatalogItem> {
+  const headers = await getAuthHeaders(token);
+  const res = await fetch(`${API_BASE}/catalog/${encodeURIComponent(id)}`, { headers, cache: 'no-store' });
   if (!res.ok) throw new Error('Error al obtener servicio del catálogo');
   return res.json();
 }
 
-export async function searchCatalog(query: string): Promise<CatalogItem[]> {
-  const res = await fetch(`${API_BASE}/catalog/search?q=${encodeURIComponent(query)}`, { cache: 'no-store' });
+export async function searchCatalog(query: string, token?: string): Promise<CatalogItem[]> {
+  const headers = await getAuthHeaders(token);
+  const res = await fetch(`${API_BASE}/catalog/search?q=${encodeURIComponent(query)}`, { headers, cache: 'no-store' });
   if (!res.ok) throw new Error('Error al buscar en el catálogo');
   return res.json();
 }
@@ -580,9 +634,7 @@ export async function createCatalogItem(
   data: CreateCatalogItemInput,
   token?: string,
 ): Promise<CatalogItem> {
-  const authToken = token || (await getAuthToken());
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/catalog`, {
     method: 'POST',
@@ -601,9 +653,7 @@ export async function updateCatalogItem(
   data: UpdateCatalogItemInput,
   token?: string,
 ): Promise<CatalogItem> {
-  const authToken = token || (await getAuthToken());
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/catalog/${encodeURIComponent(id)}`, {
     method: 'PATCH',
@@ -621,9 +671,7 @@ export async function deleteCatalogItem(
   id: string,
   token?: string,
 ): Promise<{ ok: boolean; id: string }> {
-  const authToken = token || (await getAuthToken());
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  const headers = await getAuthHeaders(token, { 'Content-Type': 'application/json' });
 
   const res = await fetch(`${API_BASE}/catalog/${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -635,8 +683,3 @@ export async function deleteCatalogItem(
   }
   return res.json();
 }
-
-
-
-
-

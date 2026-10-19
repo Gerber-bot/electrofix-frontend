@@ -19,7 +19,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { RepairTicket, TicketStatus } from '../../types/ticket';
-import { searchTicketsByDni, fetchTicketByToken, updateTicket } from '../../lib/api';
+import { searchTicketsByDni, fetchTicketByToken, approveTicketBudget, updateTicket } from '../../lib/api';
 import { AiChatWidget } from '../../components/AiChatWidget';
 
 const PROGRESS_STEPS: Array<{ key: TicketStatus; label: string; desc: string }> = [
@@ -133,9 +133,7 @@ function TrackContent() {
     if (!selectedTicket) return;
     try {
       setApproving(true);
-      const updated = await updateTicket(selectedTicket.id, {
-        status: 'IN_REPAIR',
-      });
+      const updated = await approveTicketBudget(selectedTicket.id);
       setSelectedTicket(updated);
       setTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       setApprovalSuccess(true);

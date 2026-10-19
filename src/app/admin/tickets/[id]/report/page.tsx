@@ -29,10 +29,8 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { AdminNav } from '../../../../../components/AdminNav';
 import { ThermalReceipt } from '../../../../../components/ThermalReceipt';
-import { getTicketPdfUrl, getDiagnosticPdfUrl, getPaymentPdfUrl } from '../../../../../lib/api';
+import { getTicketPdfUrl, getDiagnosticPdfUrl, getPaymentPdfUrl, fetchTicketById } from '../../../../../lib/api';
 import { RepairTicket } from '../../../../../types/ticket';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export default function TicketDetailedReportPage() {
   const params = useParams();
@@ -50,11 +48,7 @@ export default function TicketDetailedReportPage() {
     const loadTicket = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/tickets/${id}`, { cache: 'no-store' });
-        if (!res.ok) {
-          throw new Error('Ticket no encontrado');
-        }
-        const data = await res.json();
+        const data = await fetchTicketById(id);
         setTicket(data);
       } catch (err: any) {
         setError(err.message || 'Error al cargar ticket');
